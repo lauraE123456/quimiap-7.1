@@ -23,6 +23,11 @@ connection.connect((err) => {
   }
   console.log('Conexión exitosa a la base de datos.');
 });
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:5000'], // Puedes restringir esto a 'http://localhost:4000' si prefieres, o para todos:'*'
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 //USUARIOS
 
@@ -40,6 +45,7 @@ app.get('/usuarios', (req, res) => {
   });
 });
 // Resgistrar usuarios 
+// Registrar usuarios 
 app.post('/registrarUser', (req, res) => {
   const {
     nombres, 
@@ -61,9 +67,15 @@ app.post('/registrarUser', (req, res) => {
           console.error('Error ejecutando la consulta:', err);
           return res.status(500).json({ success: false, error: err });
       }
-      res.json({ success: true, results });
+      
+      // Asegúrate de que estás extrayendo el ID correctamente
+      const userId = results[0][0]?.id_usuario; // Cambia según la estructura del resultado
+
+      // Envía la respuesta incluyendo el ID del usuario
+      res.json({ success: true, id_usuario: userId, results });
   });
 });
+
 // endpoint para actualizar usuarios
 app.put('/actualizarUser/:id_usuario', (req, res) => {
   const {
@@ -136,26 +148,27 @@ app.get('/usuarios/correo/:correo_electronico', (req, res) => {
   });
 });
 
-//TRAER USUARIOS POR ID
-app.get('/usuario/:id_usuario', (req, res) => {
+// TRAER USUARIOS POR ID
+app.get('/usuarios/porid/:id_usuario', (req, res) => {
   const id_usuario = req.params.id_usuario; // Obtener el ID del usuario desde la URL
 
-  const query = `CALL ObtenerUsuarioPorID(?)`;
+  const query = `SELECT * FROM Usuario WHERE id_usuario = ?`;
 
-  connection.query(query, [id_usuario], (err, results) => {
-      if (err) {
-          console.error('Error ejecutando la consulta:', err);
-          return res.status(500).json({ success: false, error: err });
-      }
+  connection.query(query, [id_usuario], (error, results) => {
+    if (error) {
+      console.error('Error ejecutando la consulta:', error);
+      return res.status(500).json({ success: false, error: error });
+    }
 
-      // Verificar si se encontró el usuario
-      if (results[0].length === 0) {
-          return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
-      }
+    // Verificar si se encontró el usuario
+    if (results.length === 0) {
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    }
 
-      res.json({ success: true, usuario: results[0][0] }); // Devolver el primer resultado
+    res.json(results); // Devolver el primer resultado
   });
 });
+
 
 // PRODUCTOS
 // Consulta general de la tabla Categoria

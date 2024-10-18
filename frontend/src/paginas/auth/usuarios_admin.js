@@ -216,7 +216,7 @@ const handleNameKeyPress = (e) => {
           // Ahora, enviar el correo de verificación al servidor de correos en el puerto 5000
           const verificationResponse = await axios.post('http://localhost:5000/enviar-verificacion', {
             correo_electronico: formData.correo_electronico, // Cambiar 'para' por 'correo_electronico'
-            id: response.data.id // Suponiendo que el id del usuario se devuelve en la respuesta
+            id: response.data.id_usuario // Suponiendo que el id del usuario se devuelve en la respuesta
             // Puedes incluir un token de verificación aquí
         });
 

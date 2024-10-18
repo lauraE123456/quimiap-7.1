@@ -139,7 +139,7 @@ const Inicio_registro = () => {
             // Enviar el correo de verificación
             const verificationResponse = await axios.post('http://localhost:5000/enviar-verificacion', {
                 correo_electronico: formData.correo_electronico,
-                id: response.data.id
+                id: response.data.id_usuario
             });
         
             console.log('Correo de verificación enviado:', verificationResponse.data);
@@ -253,11 +253,12 @@ const Inicio_registro = () => {
     
         try {
             // Realizar una solicitud GET a la API para obtener los usuarios
-            const response = await axios.get("http://localhost:4001/iniciarSesion", {
+            const response = await axios.get("http://localhost:4001/usuarios", {
                 params: {
                     correo_electronico: email
                 },
             });
+            console.log(response.data); // Agrega esto para ver la respuesta de la API
     
             // Encontrar el usuario que coincide con el correo proporcionado
             const user = response.data.find(
@@ -400,7 +401,7 @@ const Inicio_registro = () => {
         if (email) {
             try {
                 // Verificar si el correo existe en la base de datos
-                const checkResponse = await fetch(`http://localhost:4001/usuarios/correo/${encodeURIComponent(formData.correo_electronico)}`);
+                const checkResponse = await fetch(`http://localhost:4001/usuarios?correo_electronico=${email}`);
                 const data = await checkResponse.json();
     
                 if (data.length > 0) {

@@ -22,19 +22,7 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
-// Configuración de CORS para permitir solicitudes desde el puerto 4000
-app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:4001'], // Puedes restringir esto a 'http://localhost:4000' si prefieres, o para todos:'*'
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
-// Definiendo la ruta Home
-app.get("/", (req, res) => {
-    res.render("bienvenida");
-});
-
-// conexion con la base de datos:
+// Conectar a la base de datos
 const connection = mysql.createConnection({
     host: 'localhost',
     user: 'root',
@@ -49,7 +37,17 @@ const connection = mysql.createConnection({
     }
     console.log('Conexión exitosa a la base de datos.');
   });
-  
+// Configuración de CORS para permitir solicitudes desde el puerto 4000
+app.use(cors({
+    origin: ['http://localhost:3000', 'http://localhost:4001'], // Puedes restringir esto a 'http://localhost:4000' si prefieres, o para todos:'*'
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Definiendo la ruta Home
+app.get("/", (req, res) => {
+    res.render("bienvenida");
+});
 
 // Configuración de multer para manejar la carga de archivos
 const storage = multer.diskStorage({
@@ -72,22 +70,17 @@ const transporter = nodemailer.createTransport({
 });
 
 // Ruta para procesar el registro de usuario
-app.get('/usuarios', (req, res) => {
-    const query = 'SELECT * FROM Usuario';
-    
-    connection.query(query, (error, results) => {
-      if (error) {
-        console.error('Error al realizar la consulta:', error);
-        res.status(500).json({ error: 'Error al realizar la consulta' });
-      } else {
-        res.json(results); // Devuelve los resultados de la consulta
-      }
-    });
-  });
+app.post("/usuarios", (req, res) => {
+    const userData = req.body; // Datos del usuario desde el formulario
+    // Aquí puedes agregar la lógica para guardar `userData` en la base de datos
+
+    res.status(201).send("Usuario registrado con éxito");
+});
 
 // Ruta para enviar correo de verificación
 app.post("/enviar-verificacion", (req, res) => {
     const { correo_electronico, id} = req.body;
+    console.log(`Enviando verificación a ID de usuario: ${id}`);
 
     // Generar el enlace de verificación
     const verificationLink = `http://localhost:5000/verificar-correo/${id}`;
@@ -133,30 +126,43 @@ app.post("/enviar-verificacion", (req, res) => {
     });
 });
 
+// Ruta que hace una solicitud a la bd en el puerto 4001
+app.get("/usuarios", async (req, res) => {
+    try {
+        // Haciendo una solicitud GET al puerto 4000
+        const response = await axios.get('http://localhost:4001/usuarios');
+        res.status(200).json(response.data); // Enviar los datos obtenidos al cliente
+    } catch (error) {
+        console.error('Error al hacer la solicitud a la bd del puerto 4000:', error);
+        res.status(500).send('Error al obtener los datos de la BD');
+    }
+});
 //verificacion-correo
 // Nueva ruta para verificar el correo del usuario
-// Ruta para verificar el correo del usuario
-app.get("/verificar-correo/:id_usuario", async (req, res) => {
-    const id_usuario = req.params.id_usuario; // Obtener el id_usuario desde la URL
-    console.log("ID del usuario recibido:", id_usuario);
+app.get("/verificar-correo/:id", (req, res) => {
+    const userId = parseInt(req.params.id, 10); // Convertir a entero
+    // Verifica si userId se obtuvo correctamente
+    if (isNaN(userId)) {
+        console.error('ID de usuario no válido:', req.params.id);
+        return res.status(400).send("ID de usuario no válido.");
+    }
 
-    try {
-        // Hacer una solicitud GET al servidor para obtener los datos del usuario
-        const response = await axios.get(`http://localhost:4001/usuario/${id_usuario}`);
-        const usuario = response.data;
+    // Consulta SQL para actualizar el estado del usuario
+    const query = 'UPDATE Usuario SET estado = ? WHERE id_usuario = ?';
+    const newState = 'activo';
 
-        // Verificar si se encontró el usuario
-        if (!usuario) {
+    connection.query(query, [newState, userId], (error, results) => {
+        if (error) {
+            console.error('Error al actualizar el estado del usuario:', error);
+            return res.status(500).send("Error al actualizar el estado del usuario.");
+        }
+
+        // Verifica si se actualizó algún registro
+        if (results.affectedRows === 0) {
             return res.status(404).send("Usuario no encontrado.");
         }
 
-        // Cambiar el estado del usuario a 'Activo'
-        usuario.estado = "Activo";
-
-        // Hacer una solicitud PUT para actualizar el usuario
-        await axios.put(`http://localhost:4001/usuarios/${id_usuario}`, usuario);
-
-        // Enviar una respuesta de confirmación al cliente
+        // Respuesta HTML de éxito
         res.send(`
             <!DOCTYPE html>
             <html lang="es">
@@ -214,24 +220,15 @@ app.get("/verificar-correo/:id_usuario", async (req, res) => {
             </head>
             <body>
                 <div class="container">
-                    <!-- Logo de la empresa -->
                     <img src="http://localhost:3000/img/LOGO_JEFE_DE_PRODUCCIÓN-Photoroom.png" alt="Logo Quimiap">
-    
-                    <!-- Mensaje de verificación -->
                     <h1>¡Correo Verificado!</h1>
                     <p>Gracias por verificar tu correo electrónico. Ahora tu cuenta está activa.</p>
-    
-                    <!-- Botón para ir al inicio -->
                     <a href="http://localhost:3000/inicio_registro.js" class="button">Ir al Inicio</a>
                 </div>  
             </body>
             </html>
         `);
-
-    } catch (error) {
-        console.error('Error al obtener o actualizar el usuario:', error);
-        res.status(500).send("Error al verificar el correo.");
-    }
+    });
 });
 
 // restablecer la contraseña:
@@ -401,7 +398,7 @@ app.post("/actualizar-contrasena", async (req, res) => {
             const usuariosData = JSON.parse(data);
             const usuarios = usuariosData.Users;
 
-            const usuarioIndex = usuarios.finadIndex(u => u.correo_electronico === correo_electronico);
+            const usuarioIndex = usuarios.findIndex(u => u.correo_electronico === correo_electronico);
 
             if (usuarioIndex === -1) {
                 return res.status(404).send("Usuario no encontrado.");
