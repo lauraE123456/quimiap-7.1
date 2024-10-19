@@ -86,77 +86,76 @@ const verificarUsuarioExistente = (correo_electronico, num_doc) => {
 };
 // Endpoint para registrar usuarios
 app.post('/registrarUser', async (req, res) => {
-  const {
-      nombres, 
-      apellidos, 
-      telefono, 
-      correo_electronico, 
-      tipo_doc, 
-      num_doc, 
-      rol 
-  } = req.body;
+    const {
+        nombres, 
+        apellidos, 
+        telefono, 
+        correo_electronico, 
+        tipo_doc, 
+        num_doc, 
+        contrasena, 
+        rol 
+    } = req.body;
 
-  // Inicializar la variable para la contraseña a usar
-  let contraseñaUsar;
+    let contraseñaUsar;
 
-  // Definir roles administrativos
-  const rolesAdministrativos = ['gerente', 'domiciliario', 'jefe de produccion'];
+    const rolesAdministrativos = ['gerente', 'domiciliario', 'jefe de produccion'];
 
-  try {
-      // Verificar si el usuario ya está registrado
-      const usuarioExistente = await verificarUsuarioExistente(correo_electronico, num_doc);
-      if (usuarioExistente) {
-          return res.status(400).json({ success: false, message: 'El usuario ya está registrado.' });
-      }
+    try {
+        // Verificar si el usuario ya está registrado
+        const usuarioExistente = await verificarUsuarioExistente(correo_electronico, num_doc);
+        if (usuarioExistente) {
+            return res.status(400).json({ success: false, message: 'El usuario ya está registrado.' });
+        }
 
-      // Generar o asignar la contraseña
-      if (rolesAdministrativos.includes(rol.toLowerCase())) {
-          contraseñaUsar = generarContraseña(12); // Generar contraseña aleatoria para roles administrativos
-      } else if (rol.toLowerCase() === 'cliente') {
-          contraseñaUsar = null; // No se requiere contraseña para clientes
-      } else {
-          // Manejo de rol no reconocido
-          return res.status(400).json({ success: false, message: 'Rol no reconocido.' });
-      }
+        // Generar o asignar la contraseña
+        if (rolesAdministrativos.includes(rol.toLowerCase())) {
+            contraseñaUsar = generarContraseña(12); // Generar contraseña aleatoria para roles administrativos
+        } else if (rol.toLowerCase() === 'cliente') {
+            // Usar la contraseña proporcionada por el cliente
+            if (!contrasena) {
+                return res.status(400).json({ success: false, message: 'La contraseña es requerida para clientes.' });
+            }
+            contraseñaUsar = contrasena;
+        } else {
+            // Rol no reconocido
+            return res.status(400).json({ success: false, message: 'Rol no reconocido.' });
+        }
 
-      // Hashear la contraseña antes de guardarla si existe
-      let hashedPassword;
-      if (contraseñaUsar) {
-          hashedPassword = bcrypt.hashSync(contraseñaUsar, 10);
-      }
+        // Hashear la contraseña antes de guardarla
+        const hashedPassword = bcrypt.hashSync(contraseñaUsar, 10);
 
-      // Preparar los datos para el procedimiento almacenado
-      const datosUsuario = [nombres, apellidos, telefono, correo_electronico, tipo_doc, num_doc, hashedPassword, rol];
+        // Preparar los datos para el procedimiento almacenado
+        const datosUsuario = [nombres, apellidos, telefono, correo_electronico, tipo_doc, num_doc, hashedPassword, rol];
 
-      // Registrar el usuario en la base de datos
-      const results = await registrarUsuario(datosUsuario);
-      const userId = results.insertId;
+        // Registrar el usuario en la base de datos
+        const results = await registrarUsuario(datosUsuario);
+        const userId = results.insertId;
 
-      // Si el rol es uno de los roles administrativos, enviar correo con la contraseña
-      if (rolesAdministrativos.includes(rol.toLowerCase()) && contraseñaUsar) {
-          try {
-              // Llamar al endpoint de envío de correo
-              await axios.post('http://localhost:5000/enviar_contrasena', {
-                  correo_electronico,
-                  id: userId,
-                  contrasena: contraseñaUsar
-              });
-              console.log('Correo de verificación enviado con éxito.');
-          } catch (error) {
-              console.error('Error al enviar el correo de verificación:', error);
-              // Si ocurre un error al enviar el correo, eliminar al usuario para evitar inconsistencias
-              await eliminarUsuario(userId);
-              return res.status(500).json({ success: false, message: 'Error al enviar el correo de verificación.' });
-          }
-      }
+        // Si es un rol administrativo, enviar la contraseña por correo
+        if (rolesAdministrativos.includes(rol.toLowerCase())) {
+            try {
+                await axios.post('http://localhost:5000/enviar_contrasena', {
+                    correo_electronico,
+                    id: userId,
+                    contrasena: contraseñaUsar
+                });
+                console.log('Correo de verificación enviado con éxito.');
+            } catch (error) {
+                console.error('Error al enviar el correo de verificación:', error);
+                // Eliminar al usuario si ocurre un error al enviar el correo
+                await eliminarUsuario(userId);
+                return res.status(500).json({ success: false, message: 'Error al enviar el correo de verificación.' });
+            }
+        }
 
-      // Responder con éxito si todo salió bien
-      return res.json({ success: true, id_usuario: userId, results });
-  } catch (err) {
-      console.error('Error al registrar el usuario:', err);
-      return res.status(500).json({ success: false, error: err });
-  }
+        return res.json({ success: true, id_usuario: userId, results });
+    } catch (err) {
+        console.error('Error al registrar el usuario:', err);
+        return res.status(500).json({ success: false, error: err });
+    }
 });
+
 
 
 // Función para eliminar un usuario en caso de error al enviar el correo
