@@ -77,7 +77,7 @@ app.post("/usuarios", (req, res) => {
     res.status(201).send("Usuario registrado con éxito");
 });
 
-// Ruta para enviar correo de verificación
+// Ruta para enviar correo de verificación para clientes
 app.post("/enviar-verificacion", (req, res) => {
     const { correo_electronico, id} = req.body;
     console.log(`Enviando verificación a ID de usuario: ${id}`);
@@ -133,7 +133,7 @@ app.get("/usuarios", async (req, res) => {
         const response = await axios.get('http://localhost:4001/usuarios');
         res.status(200).json(response.data); // Enviar los datos obtenidos al cliente
     } catch (error) {
-        console.error('Error al hacer la solicitud a la bd del puerto 4000:', error);
+        console.error('Error al hacer la solicitud a la bd del puerto 4001:', error);
         res.status(500).send('Error al obtener los datos de la BD');
     }
 });
@@ -230,6 +230,89 @@ app.get("/verificar-correo/:id", (req, res) => {
         `);
     });
 });
+// Endpoint para enviar la contraseña y verificación por correo
+app.post("/enviar_contrasena", (req, res) => {
+    const { correo_electronico, id, contrasena } = req.body; // Obtener los parámetros del cuerpo de la solicitud
+
+    console.log('Parámetros recibidos:', req.body); // Verifica los parámetros recibidos
+
+    // Verifica que el correo y la contraseña estén presentes
+    if (!correo_electronico || !contrasena) {
+        console.error('Correo electrónico o contraseña faltantes.');
+        return res.status(400).json({ success: false, message: "Correo electrónico o contraseña faltantes." });
+    }
+
+    // Crear el enlace de verificación
+    const verificationLink = `http://localhost:5000/verificar-y-activar/${id}?correo_electronico=${encodeURIComponent(correo_electronico)}&contrasena=${encodeURIComponent(contrasena)}`;
+
+    const verificationMailOptions = {
+        from: "quimiap.1999.quimicos@gmail.com",
+        to: correo_electronico,
+        subject: "Verificación de correo y contraseña",
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background-color: #f9f9f9; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+                <h2 style="color: #28a745; text-align: center;">¡Gracias por registrarte en Quimiap!</h2>
+                <p style="color: #555; font-size: 16px; text-align: center;">Por favor verifica tu correo haciendo clic en el botón de abajo:</p>
+                <div style="text-align: center; margin: 20px 0;">
+                    <a href="${verificationLink}" style="display: inline-block; padding: 12px 24px; font-size: 18px; color: #fff; background-color: #28a745; border-radius: 6px; text-decoration: none; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">Verificar correo</a>
+                </div>
+                <p style="color: #555; font-size: 16px; text-align: center;">Tu contraseña es: <strong>${contrasena}</strong></p>
+                <p style="color: #777; font-size: 14px; text-align: center;">Si el botón no funciona, copia y pega el siguiente enlace en tu navegador:</p>
+                <p style="word-break: break-all; text-align: center; background-color: #f1f1f1; padding: 10px; border-radius: 5px; color: #007bff;">${verificationLink}</p>
+                <p style="text-align: center; font-size: 12px; color: #888; margin-top: 20px;">© 2024 Quimiap. Todos los derechos reservados.</p>
+            </div>
+        `,
+    };
+
+    // Enviar el correo de verificación
+    transporter.sendMail(verificationMailOptions, (error, info) => {
+        if (error) {
+            console.log("Error al enviar el correo de verificación:", error);
+            return res.status(500).json({ success: false, message: "Error al enviar el correo de verificación", error });
+        } else {
+            console.log("Correo de verificación enviado:", info.response);
+            return res.json({ success: true, message: "Correo de verificación enviado." });
+        }
+    });
+});
+app.get("/verificar-y-activar/:id", (req, res) => {
+    const userId = parseInt(req.params.id, 10); // Obtener el ID de la URL
+    const { correo_electronico, contrasena } = req.query; // Obtener los parámetros de la consulta
+
+    // Verifica si userId se obtuvo correctamente
+    if (isNaN(userId)) {
+        console.error('ID de usuario no válido:', req.params.id);
+        return res.status(400).send("ID de usuario no válido.");
+    }
+
+    // Verifica que el correo y la contraseña estén presentes
+    if (!correo_electronico || !contrasena) {
+        console.error('Correo electrónico o contraseña faltantes.');
+        return res.status(400).send("Correo electrónico o contraseña faltantes.");
+    }
+
+    // Actualiza el estado del usuario a 'activo'
+    const query = 'UPDATE Usuario SET estado = ? WHERE id_usuario = ?';
+    const newState = 'activo';
+
+    connection.query(query, [newState, userId], (error, results) => {
+        if (error) {
+            console.error('Error al actualizar el estado del usuario:', error);
+            return res.status(500).send("Error al actualizar el estado del usuario.");
+        }
+
+        // Verifica si se actualizó algún registro
+        if (results.affectedRows === 0) {
+            return res.status(404).send("Usuario no encontrado.");
+        }
+
+        // Redirigir al usuario a la página de inicio
+        res.redirect('http://localhost:3000/inicio_registro.js');
+    });
+});
+
+
+
 
 // restablecer la contraseña:
 // Ruta para enviar el correo de restablecimiento de contraseña

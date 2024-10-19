@@ -80,8 +80,8 @@ const Inicio_registro = () => {
         
         if (passwordError) {
             Swal.fire({
-                title: 'Error',
-                text: 'La contraseña es incorrecta.',
+                title: 'Error en la Contraseña',
+                text: 'La contraseña es incorrecta, ingresa los campos que se solicitan ',
                 icon: 'error',
                 timer: 2000,
                 showConfirmButton: false
@@ -114,6 +114,32 @@ const Inicio_registro = () => {
                     showConfirmButton: false
                 });
                 return; // Detener el flujo aquí si la cuenta ya existe
+            }
+            // Verificar si el número de documento ya existe
+    try {
+        const checkResponse = await axios.get(`http://localhost:4001/usuarios/documento/${encodeURIComponent(formData.num_doc)}`);
+
+        if (checkResponse.data.length > 0) {
+            // Si el número de documento ya está en la base de datos, mostrar la alerta
+            await Swal.fire({
+                title: 'Número de Documento ya existe',
+                text: 'El número de documento ya está registrado. Por favor, verifica los datos.',
+                icon: 'warning',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            return; // Detener el flujo aquí si el número de documento ya existe
+                }
+            } catch (error) {
+                console.error('Error checking document number:', error);
+                Swal.fire({
+                    title: 'El',
+                    text: 'Ocurrió un error al verificar el número de documento.',
+                    icon: 'error',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+                return; // Detener el flujo en caso de error en la verificación
             }
         
             // Encripta la contraseña antes de enviarla al servidor
@@ -252,30 +278,24 @@ const Inicio_registro = () => {
         e.preventDefault();
     
         try {
-            // Realizar una solicitud GET a la API para obtener los usuarios
-            const response = await axios.get("http://localhost:4001/usuarios", {
-                params: {
-                    correo_electronico: email
-                },
+            // Realizar una solicitud POST a la API para el inicio de sesión
+            const response = await axios.post("http://localhost:4001/login", {
+                correo_electronico: email,
+                contrasena: password
             });
-            console.log(response.data); // Agrega esto para ver la respuesta de la API
-    
-            // Encontrar el usuario que coincide con el correo proporcionado
-            const user = response.data.find(
-                (u) => u.correo_electronico === email
-            );
+            console.log('Correo electrónico enviado:', email);
+            console.log('Contraseña enviada:', password);
+
+            const user = response.data.user; // Obtener datos del usuario de la respuesta
     
             if (user) {
-                // Verificar la contraseña encriptada
-                const isPasswordCorrect = bcrypt.compareSync(password, user.contrasena);
-    
                 // Verificar el estado del usuario
                 if (user.estado === "Activo") {
                     // Guardar datos del usuario en sessionStorage
                     sessionStorage.setItem("isAuthenticated", "true");
                     sessionStorage.setItem("userRole", user.rol);
                     sessionStorage.setItem("userName", user.nombres);
-                    sessionStorage.setItem("userId", user.id);
+                    sessionStorage.setItem("userId", user.id_usuario);
                     setIsAuthenticated(true);
                     setUserName(user.nombres);
     
@@ -325,7 +345,7 @@ const Inicio_registro = () => {
                     });
                 }
             } else {
-                // Mostrar alerta si el correo o la contraseña son incorrectos
+                // Mostrar alerta si el usuario no es encontrado
                 await Swal.fire({
                     title: 'Error',
                     text: 'Correo o contraseña incorrectos',
@@ -335,17 +355,63 @@ const Inicio_registro = () => {
                 });
             }
         } catch (error) {
-            // Mostrar alerta si ocurre un error durante la solicitud
-            console.error("Error durante el inicio de sesión:", error);
-            await Swal.fire({
-                title: 'Error',
-                text: 'Ocurrió un error durante el inicio de sesión. Por favor, intente nuevamente.',
-                icon: 'error',
-                timer: 2000,
-                showConfirmButton: false
-            });
+            // Manejo de errores
+            if (error.response) {
+                // La solicitud fue realizada y el servidor respondió con un código de estado que no está en el rango de 2xx
+                console.error("Error en la respuesta del servidor:", error.response.data);
+                console.error("Código de estado:", error.response.status);
+                
+                // Mostrar alerta personalizada según el código de error
+                if (error.response.status === 403) {
+                    await Swal.fire({
+                        title: 'Acceso Prohibido',
+                        text: 'No tienes permiso para acceder a esta acción. Por favor, verifica tus credenciales.',
+                        icon: 'error',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                } else if (error.response.status === 401) {
+                    await Swal.fire({
+                        title: 'Error',
+                        text: 'Credenciales incorrectas. Por favor, intenta nuevamente.',
+                        icon: 'error',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                } else {
+                    await Swal.fire({
+                        title: 'Error',
+                        text: 'Ocurrió un error durante el inicio de sesión. Por favor, intente nuevamente.',
+                        icon: 'error',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                }
+            } else if (error.request) {
+                // La solicitud fue realizada pero no se recibió respuesta
+                console.error("Error en la solicitud:", error.request);
+                await Swal.fire({
+                    title: 'Error',
+                    text: 'No se recibió respuesta del servidor. Por favor, verifica tu conexión.',
+                    icon: 'error',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            } else {
+                // Algo sucedió al configurar la solicitud que lanzó un error
+                console.error("Error:", error.message);
+                await Swal.fire({
+                    title: 'Error',
+                    text: 'Ocurrió un error al intentar iniciar sesión. Por favor, intenta nuevamente.',
+                    icon: 'error',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            }
         }
     };
+    
+    
      // Maneja el cambio en el tipo de documento
      const handleTipoDocChange = (event) => {
         const { value } = event.target;
@@ -378,7 +444,6 @@ const Inicio_registro = () => {
             setFormData((prevData) => ({ ...prevData, num_doc: value }));
         }
     };
-
     //solicitar correo en olvisdate tu contraseña:
     const handleForgotPasswordClick = async () => {
         // Mostrar alerta para que el usuario ingrese su correo

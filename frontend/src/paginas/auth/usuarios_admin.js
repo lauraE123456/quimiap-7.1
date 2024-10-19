@@ -1,7 +1,6 @@
 import { faEdit, faFilter, faSearch, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import axios from 'axios';
-import bcrypt from 'bcryptjs';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
@@ -17,7 +16,6 @@ const UsuariosAdmin = () => {
     correo_electronico: '',
     tipo_doc: '',
     num_doc: '',
-    contrasena: '',
     rol: '',
     estado: 'Activo'
   });
@@ -134,107 +132,141 @@ const handleNameKeyPress = (e) => {
 
   // registro de usuarios admin
   const handleSaveUser = async () => {
-    const requiredFields = ['nombres', 'apellidos', 'telefono', 'correo_electronico', 'tipo_doc', 'num_doc', 'contrasena', 'rol'];
-    const validateForm = requiredFields.every(field => formData[field]);
-  
-    if (!validateForm) {
-      Swal.fire({
-        title: 'Complete todos los campos requeridos',
-        text: 'Por favor, asegúrese de que todos los campos obligatorios estén completos.',
-        icon: 'warning',
-        timer: 2000,
-        showConfirmButton: false
-      });
-      return;
+    // Asegúrate de que formData esté definido y tiene los campos necesarios
+    if (!formData) {
+        console.error('formData es undefined');
+        return; // Salir si formData es undefined
     }
-  
-    if (isEditing && currentUser) {
-      Swal.fire({
-          title: '¿Desea continuar para guardar los cambios?',
-          icon: 'warning',
-          showDenyButton: true,
-          showCancelButton: true,
-          confirmButtonText: 'Guardar',
-          denyButtonText: 'No Guardar',
-          cancelButtonText: 'Cancelar',
-          confirmButtonColor: '#3085d6',
-      }).then(async (result) => {
-          if (result.isConfirmed) {
-              try {
-                  await axios.put(`http://localhost:4001/actualizarUser/${currentUser.id}`, formData);
-                  fetchUsers();
-                  resetForm();
-                  setIsEditing(false);
-                  Swal.fire({
-                      title: '¡Éxito!',
-                      text: 'Usuario actualizado exitosamente.',
-                      icon: 'success',
-                      timer: 2000,
-                      showConfirmButton: false
-                  }).then(() => {
-                      navigate('/usuarios_admin.js');
-                  });
-              } catch (error) {
-                  console.error('Error updating user:', error);
-                  Swal.fire({
-                      title: 'Error!',
-                      text: 'Error al actualizar el usuario.',
-                      icon: 'error',
-                      timer: 2000,
-                      showConfirmButton: false
-                  });
-              }
-          } else if (result.isDenied) {
-              Swal.fire({
-                  title: 'Cambios no guardados',
-                  text: 'Los cambios que has hecho no se guardaron.',
-                  icon: 'info',
-                  timer: 2000,
-                  showConfirmButton: false
-              }).then(() => {
-                  navigate('/usuarios_admin.js');
-              });
-          }
-      });
-  } else {
-      try {
-        const hashedPassword = bcrypt.hashSync(formData.contrasena, 10);
-          // Registrar al usuario con estado "Pendiente"
-          const response = await axios.post('http://localhost:4001/registrarUser', {
-              ...formData,
-              estado: 'Pendiente',
-              contrasena: hashedPassword
-          });
-          await Swal.fire({
-              title: 'Revisa tu correo electrónico',
-              text: 'Para activar tu cuenta.',
-              icon: 'info',
-              timer: 2000,
-              showConfirmButton: false
-          });
 
-          // Ahora, enviar el correo de verificación al servidor de correos en el puerto 5000
-          const verificationResponse = await axios.post('http://localhost:5000/enviar-verificacion', {
-            correo_electronico: formData.correo_electronico, // Cambiar 'para' por 'correo_electronico'
-            id: response.data.id_usuario // Suponiendo que el id del usuario se devuelve en la respuesta
-            // Puedes incluir un token de verificación aquí
+    // Lista de campos requeridos
+    const requiredFields = ['nombres', 'apellidos', 'telefono', 'correo_electronico', 'tipo_doc', 'num_doc', 'rol'];
+
+    // Filtrar campos vacíos, asegurando que sean cadenas
+    const emptyFields = requiredFields.filter(field => {
+        const value = formData[field];
+        return typeof value !== 'string' || value.trim() === ''; // Verificar que sea una cadena y no esté vacía
+    });
+
+    // Validar campos vacíos
+    if (emptyFields.length > 0) {
+        const fieldsString = emptyFields.map(field => field.charAt(0).toUpperCase() + field.slice(1)).join(', ');
+        Swal.fire({
+            title: 'Complete los campos requeridos',
+            text: `Por favor, complete los siguientes campos: ${fieldsString}.`,
+            icon: 'warning',
+            timer: 3000,
+            showConfirmButton: false
         });
+        return;
+    }
 
-        console.log('Correo de verificación enviado:', verificationResponse.data);
+    // Validar contraseña (ejemplo de validación de longitud)
+    if (formData.contrasena && formData.contrasena.length < 8) {
+        Swal.fire({
+            title: 'Contraseña inválida',
+            text: 'La contraseña debe tener al menos 8 caracteres.',
+            icon: 'warning',
+            timer: 3000,
+            showConfirmButton: false
+        });
+        return;
+    }
 
+    // Verificar si se está editando un usuario
+    if (isEditing && currentUser) {
+        Swal.fire({
+            title: '¿Desea continuar para guardar los cambios?',
+            icon: 'warning',
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Guardar',
+            denyButtonText: 'No Guardar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#3085d6',
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    await axios.put(`http://localhost:4001/actualizarUser/${currentUser.id}`, formData);
+                    fetchUsers();
+                    resetForm();
+                    setIsEditing(false);
+                    Swal.fire({
+                        title: '¡Éxito!',
+                        text: 'Usuario actualizado exitosamente.',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => {
+                        navigate('/usuarios_admin.js');
+                    });
+                } catch (error) {
+                    console.error('Error updating user:', error);
+                    Swal.fire({
+                        title: 'Error!',
+                        text: error.response?.data?.message || 'Error al actualizar el usuario.',
+                        icon: 'error',
+                        timer: 3000,
+                        showConfirmButton: false
+                    });
+                }
+            } else if (result.isDenied) {
+                Swal.fire({
+                    title: 'Cambios no guardados',
+                    text: 'Los cambios que has hecho no se guardaron.',
+                    icon: 'info',
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    navigate('/usuarios_admin.js');
+                });
+            }
+        });
+    } else {
+        try {
+            // Registrar al usuario con estado "Pendiente"
+            const response = await axios.post('http://localhost:4001/registrarUser', {
+                ...formData,
+                estado: 'Pendiente'
+            });
 
-      } catch (error) {
-          console.error('Error saving user:', error);
-          Swal.fire({
-              title: 'Error!',
-              text: 'Error al guardar el usuario.',
-              icon: 'error',
-              timer: 2000,
-              showConfirmButton: false
-          });
-      }
-  }
+            // Verifica que el registro fue exitoso
+            console.log('Usuario registrado, respuesta del servidor:', response);
+
+            // Alerta para revisar correo electrónico
+            await Swal.fire({
+                title: 'Revisa tu correo electrónico',
+                text: 'Para activar tu cuenta.',
+                icon: 'info',
+                timer: 1000,
+                showConfirmButton: false,  // Elimina el temporizador para esperar confirmación del usuario
+            });
+
+        } catch (error) {
+            console.error('Error saving user:', error);
+            let errorMessage;
+
+            // Manejar errores específicos según el mensaje del backend
+            if (error.response) {
+                if (error.response.status === 400 && error.response.data.message === 'El usuario ya está registrado.') {
+                    errorMessage = 'El usuario ya existe con ese número de documento.';
+                } else {
+                    errorMessage = error.response.data.message || 'Error al guardar el usuario.';
+                }
+            } else {
+                errorMessage = 'Error al guardar el usuario.';
+            }
+
+            Swal.fire({
+                title: 'Error!',
+                text: errorMessage,
+                icon: 'error',
+                timer: 3000,
+                showConfirmButton: false
+            });
+        }
+    }
 };
+
   const handleEditUser = (user) => {
     setIsEditing(true);
     setCurrentUser(user);
@@ -292,7 +324,6 @@ const handleSetInactiveUser = async (id_usuario) => {
       correo_electronico: '',
       tipo_doc: '',
       num_doc: '',
-      contrasena: '',
       rol: '',
       estado: 'Activo',
     });
@@ -471,10 +502,6 @@ const handleKeyPress = (e) => {
                     <div className="mb-3">
                       <label htmlFor="telefono" className="form-label">Número Celular</label>
                       <input type="number" className="form-control" id="telefono" placeholder="Ingrese Número Celular" value={formData.telefono} onChange={handleInputChange} required/>
-                    </div>
-                    <div className="mb-3">
-                      <label htmlFor="contrasena" className="form-label">Contraseña</label>
-                      <input type="password" className="form-control" id="contrasena" placeholder="Ingrese Contraseña" value={formData.contrasena} onChange={handleInputChange} required/>
                     </div>
                     <div className="mb-3">
                       <label htmlFor="rol" className="form-label">Rol</label>

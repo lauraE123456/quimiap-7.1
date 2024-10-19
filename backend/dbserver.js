@@ -1,9 +1,12 @@
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
-
+const axios = require('axios');
 const app = express();
 const port = 4001;
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');// henerar token
+
 
 app.use(cors()); // Habilita CORS para permitir solicitudes desde tu frontend
 app.use(express.json()); // Permite el parsing de JSON en las solicitudes
@@ -44,37 +47,160 @@ app.get('/usuarios', (req, res) => {
     }
   });
 });
-// Resgistrar usuarios 
-// Registrar usuarios 
-app.post('/registrarUser', (req, res) => {
+// Función para generar una contraseña aleatoria
+function generarContraseña(length) {
+  const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
+  let contraseña = '';
+  for (let i = 0; i < length; i++) {
+      contraseña += caracteres.charAt(Math.floor(Math.random() * caracteres.length));
+  }
+  return contraseña;
+}
+// Función para registrar un usuario
+const registrarUsuario = (datosUsuario) => {
+  return new Promise((resolve, reject) => { // Devolver una promesa
+      const query = 'INSERT INTO Usuario (nombres, apellidos, telefono, correo_electronico, tipo_doc, num_doc, contrasena, rol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+
+      connection.query(query, datosUsuario, (err, results) => {
+          if (err) {
+              console.error('Error al registrar usuario:', err);
+              return reject(err); // Rechazar la promesa en caso de error
+          }
+          resolve(results); // Resolver la promesa con los resultados
+      });
+  });
+};
+
+// Función para verificar si el usuario ya existe en la base de datos
+const verificarUsuarioExistente = (correo_electronico, num_doc) => {
+  return new Promise((resolve, reject) => {
+      const query = 'SELECT id_usuario FROM Usuario WHERE correo_electronico = ? OR num_doc = ?';
+      connection.query(query, [correo_electronico, num_doc], (err, results) => {
+          if (err) {
+              console.error('Error al verificar el usuario:', err);
+              return reject(err);
+          }
+          resolve(results.length > 0); // Retorna true si el usuario existe, false si no
+      });
+  });
+};
+// Endpoint para registrar usuarios
+app.post('/registrarUser', async (req, res) => {
   const {
-    nombres, 
-    apellidos, 
-    telefono, 
-    correo_electronico, 
-    tipo_doc, 
-    num_doc, 
-    contrasena, 
-    rol 
+      nombres, 
+      apellidos, 
+      telefono, 
+      correo_electronico, 
+      tipo_doc, 
+      num_doc, 
+      rol 
   } = req.body;
 
-  const query = `CALL RegistrarUsuario(?, ?, ?, ?, ?, ?, ?, ?)`;
+  // Inicializar la variable para la contraseña a usar
+  let contraseñaUsar;
 
-  connection.query(query, 
-    [nombres, apellidos, telefono, correo_electronico, tipo_doc, num_doc, contrasena, rol], 
-    (err, results) => {
-      if (err) {
-          console.error('Error ejecutando la consulta:', err);
-          return res.status(500).json({ success: false, error: err });
+  // Definir roles administrativos
+  const rolesAdministrativos = ['gerente', 'domiciliario', 'jefe de produccion'];
+
+  try {
+      // Verificar si el usuario ya está registrado
+      const usuarioExistente = await verificarUsuarioExistente(correo_electronico, num_doc);
+      if (usuarioExistente) {
+          return res.status(400).json({ success: false, message: 'El usuario ya está registrado.' });
       }
-      
-      // Asegúrate de que estás extrayendo el ID correctamente
-      const userId = results[0][0]?.id_usuario; // Cambia según la estructura del resultado
 
-      // Envía la respuesta incluyendo el ID del usuario
-      res.json({ success: true, id_usuario: userId, results });
-  });
+      // Generar o asignar la contraseña
+      if (rolesAdministrativos.includes(rol.toLowerCase())) {
+          contraseñaUsar = generarContraseña(12); // Generar contraseña aleatoria para roles administrativos
+      } else if (rol.toLowerCase() === 'cliente') {
+          contraseñaUsar = null; // No se requiere contraseña para clientes
+      } else {
+          // Manejo de rol no reconocido
+          return res.status(400).json({ success: false, message: 'Rol no reconocido.' });
+      }
+
+      // Hashear la contraseña antes de guardarla si existe
+      let hashedPassword;
+      if (contraseñaUsar) {
+          hashedPassword = bcrypt.hashSync(contraseñaUsar, 10);
+      }
+
+      // Preparar los datos para el procedimiento almacenado
+      const datosUsuario = [nombres, apellidos, telefono, correo_electronico, tipo_doc, num_doc, hashedPassword, rol];
+
+      // Registrar el usuario en la base de datos
+      const results = await registrarUsuario(datosUsuario);
+      const userId = results.insertId;
+
+      // Si el rol es uno de los roles administrativos, enviar correo con la contraseña
+      if (rolesAdministrativos.includes(rol.toLowerCase()) && contraseñaUsar) {
+          try {
+              // Llamar al endpoint de envío de correo
+              await axios.post('http://localhost:5000/enviar_contrasena', {
+                  correo_electronico,
+                  id: userId,
+                  contrasena: contraseñaUsar
+              });
+              console.log('Correo de verificación enviado con éxito.');
+          } catch (error) {
+              console.error('Error al enviar el correo de verificación:', error);
+              // Si ocurre un error al enviar el correo, eliminar al usuario para evitar inconsistencias
+              await eliminarUsuario(userId);
+              return res.status(500).json({ success: false, message: 'Error al enviar el correo de verificación.' });
+          }
+      }
+
+      // Responder con éxito si todo salió bien
+      return res.json({ success: true, id_usuario: userId, results });
+  } catch (err) {
+      console.error('Error al registrar el usuario:', err);
+      return res.status(500).json({ success: false, error: err });
+  }
 });
+
+
+// Función para eliminar un usuario en caso de error al enviar el correo
+const eliminarUsuario = (userId) => {
+  return new Promise((resolve, reject) => {
+      const query = 'DELETE FROM Usuario WHERE id_usuario = ?';
+      connection.query(query, [userId], (err, results) => {
+          if (err) {
+              console.error('Error al eliminar usuario:', err);
+              return reject(err);
+          }
+          resolve(results);
+      });
+  });
+};
+// funcion para verificar el numero de documento existente
+const verificarUsuarioExistentePorDocumento = (num_doc) => {
+  return new Promise((resolve, reject) => {
+      const query = 'SELECT id_usuario FROM Usuario WHERE num_doc = ?';
+      connection.query(query, [num_doc], (err, results) => {
+          if (err) {
+              console.error('Error al verificar el usuario:', err);
+              return reject(err);
+          }
+          resolve(results.length > 0); // Retorna true si el usuario existe, false si no
+      });
+  });
+};
+
+// Endpoint para verificar si el número de documento ya está registrado
+app.get('/usuarios/documento/:num_doc', async (req, res) => {
+  const { num_doc } = req.params;
+  try {
+      const usuario = await verificarUsuarioExistentePorDocumento(num_doc); // Implementa esta función en tu modelo
+      if (usuario) {
+          return res.json([usuario]); // Retorna un arreglo con el usuario si existe
+      }
+      return res.json([]); // Retorna un arreglo vacío si no existe
+  } catch (error) {
+      console.error('Error checking document number:', error);
+      return res.status(500).json({ message: 'Error al verificar el número de documento.' });
+  }
+});
+
 
 // endpoint para actualizar usuarios
 app.put('/actualizarUser/:id_usuario', (req, res) => {
@@ -119,19 +245,76 @@ connection.query(query, [id_usuario, estado], (err, results) => {
     res.json({ success: true, results });
 });
 });
-// endpoint para iniciar sesion
-app.get('/iniciarSesion', (req, res) => {
-  const query = 'SELECT * FROM Usuario';
+app.post('/login', (req, res) => {
+  const { correo_electronico, contrasena } = req.body;
   
-  connection.query(query, (error, results) => {
-    if (error) {
-      console.error('Error al realizar la consulta:', error);
-      res.status(500).json({ error: 'Error al realizar la consulta' });
-    } else {
-      res.json(results); // Devuelve los resultados de la consulta
-    }
+  console.log('Correo electrónico recibido:', correo_electronico);
+  console.log('Contraseña recibida:', contrasena);
+
+  // Verifica que los campos no estén vacíos
+  if (!correo_electronico || !contrasena) {
+      return res.status(400).json({ success: false, message: 'Por favor, complete todos los campos requeridos.' });
+  }
+
+  // Consulta para encontrar el usuario
+  const query = 'SELECT * FROM Usuario WHERE correo_electronico = ?';
+  connection.query(query, [correo_electronico], (err, results) => {
+      if (err) {
+          console.error('Error al ejecutar la consulta:', err);
+          return res.status(500).json({ success: false, message: 'Error en el servidor.' });
+      }
+
+      // Verifica si el usuario existe
+      if (results.length === 0) {
+          console.log('No se encontró el usuario con el correo proporcionado.');
+          return res.status(401).json({ success: false, message: 'Credenciales incorrectas.' });
+      }
+
+      const user = results[0];
+      console.log('Usuario encontrado:', user);
+
+      // Verificar el estado de la cuenta
+      if (user.estado !== 'activo') {
+          console.log('Estado de la cuenta:', user.estado);
+          return res.status(403).json({ success: false, message: 'Cuenta inactiva o pendiente.' });
+      }
+
+      // Verifica la contraseña
+      bcrypt.compare(contrasena, user.contrasena, (err, isMatch) => {
+          if (err) {
+              console.error('Error al comparar contraseñas:', err);
+              return res.status(500).json({ success: false, message: 'Error en el servidor.' });
+          }
+
+          if (!isMatch) {
+              console.log('La contraseña no coincide.');
+              return res.status(401).json({ success: false, message: 'Credenciales incorrectas.' });
+          }
+
+          // Almacena la información del usuario en la sesión
+          req.session.user = {
+              id_usuario: user.id_usuario,
+              nombres: user.nombres,
+              apellidos: user.apellidos,
+              rol: user.rol
+          };
+
+          // Devuelve la respuesta con los datos del usuario
+          res.json({
+              success: true,
+              message: 'Inicio de sesión exitoso.',
+              user: {
+                  id_usuario: user.id_usuario,
+                  nombres: user.nombres,
+                  apellidos: user.apellidos,
+                  rol: user.rol
+              }
+          });
+      });
   });
 });
+
+
 
 // Ruta para buscar usuario por correo electrónico
 app.get('/usuarios/correo/:correo_electronico', (req, res) => {
