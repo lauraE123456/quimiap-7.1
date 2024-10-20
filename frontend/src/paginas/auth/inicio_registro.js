@@ -287,10 +287,12 @@ const Inicio_registro = () => {
             console.log('Contraseña enviada:', password);
 
             const user = response.data.user; // Obtener datos del usuario de la respuesta
+            console.log('Respuesta del servidor:', response.data);
+
     
             if (user) {
                 // Verificar el estado del usuario
-                if (user.estado === "Activo") {
+                if (user.estado === "activo") {
                     // Guardar datos del usuario en sessionStorage
                     sessionStorage.setItem("isAuthenticated", "true");
                     sessionStorage.setItem("userRole", user.rol);
@@ -308,23 +310,14 @@ const Inicio_registro = () => {
                         showConfirmButton: false
                     });
     
-                    // Navegar según el rol del usuario
-                    switch (user.rol.toLowerCase()) {
-                        case "cliente":
-                            navigate("/");
-                            break;
-                        case "jefe de produccion":
-                            navigate("/jf_produccion.js");
-                            break;
-                        case "domiciliario":
-                            navigate("/domiciliario.js");
-                            break;
-                        case "gerente":
-                            navigate("/usuarios_admin.js");
-                            break;
-                        default:
-                            navigate("/");
-                    }
+                  // Navegar según el rol del usuario
+const route = user.rol.toLowerCase() === "cliente" ? "/" :
+user.rol.toLowerCase() === "jefe de produccion" ? "/jf_produccion.js" :
+user.rol.toLowerCase() === "domiciliario" ? "/domiciliario.js" :
+user.rol.toLowerCase() === "gerente" ? "/usuarios_admin.js" : "/";
+
+navigate(route);
+
                 } else if (user.estado === "Pendiente") {
                     // Mostrar alerta si el usuario está pendiente
                     await Swal.fire({

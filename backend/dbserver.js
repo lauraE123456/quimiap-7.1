@@ -5,8 +5,20 @@ const axios = require('axios');
 const app = express();
 const port = 4001;
 const bcrypt = require('bcrypt');
+const session = require('express-session');
 const jwt = require('jsonwebtoken');// henerar token
 
+
+// Configuración de express-session
+app.use(session({
+  secret: 'uFJG768ujfghASDGJKL!@1234asdf8976&%$#', // Debes cambiar esto por un secreto fuerte y único
+  resave: false, // No volver a guardar la sesión si no se ha modificado
+  saveUninitialized: false, // No guardar sesiones vacías o sin inicializar
+  cookie: { 
+    secure: false, // true si usas HTTPS
+    maxAge: 1000 * 60 * 60 * 24 // 1 día de duración para las cookies de sesión
+  }
+}));
 
 app.use(cors()); // Habilita CORS para permitir solicitudes desde tu frontend
 app.use(express.json()); // Permite el parsing de JSON en las solicitudes
@@ -15,7 +27,7 @@ app.use(express.json()); // Permite el parsing de JSON en las solicitudes
 const connection = mysql.createConnection({
   host: 'localhost',
   user: 'root',
-  password: 'Root',
+  password: 'r1234',
   database: 'quimiap'
 });
 
@@ -244,6 +256,7 @@ connection.query(query, [id_usuario, estado], (err, results) => {
     res.json({ success: true, results });
 });
 });
+
 app.post('/login', (req, res) => {
   const { correo_electronico, contrasena } = req.body;
   

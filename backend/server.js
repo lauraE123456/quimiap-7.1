@@ -26,7 +26,7 @@ app.set("views", path.join(__dirname, "views"));
 const connection = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'Root',
+    password: 'r1234',
     database: 'quimiap'
   });
   
