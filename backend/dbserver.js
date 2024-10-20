@@ -27,7 +27,7 @@ app.use(express.json()); // Permite el parsing de JSON en las solicitudes
 const connection = mysql.createConnection({
   host: 'localhost',
   user: 'root',
-  password: 'r1234',
+  password: 'root',
   database: 'quimiap'
 });
 
@@ -256,77 +256,82 @@ connection.query(query, [id_usuario, estado], (err, results) => {
     res.json({ success: true, results });
 });
 });
-
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
   const { correo_electronico, contrasena } = req.body;
-  
-  console.log('Correo electrónico recibido:', correo_electronico);
-  console.log('Contraseña recibida:', contrasena);
 
   // Verifica que los campos no estén vacíos
   if (!correo_electronico || !contrasena) {
       return res.status(400).json({ success: false, message: 'Por favor, complete todos los campos requeridos.' });
   }
 
-  // Consulta para encontrar el usuario
-  const query = 'SELECT * FROM Usuario WHERE correo_electronico = ?';
-  connection.query(query, [correo_electronico], (err, results) => {
-      if (err) {
-          console.error('Error al ejecutar la consulta:', err);
-          return res.status(500).json({ success: false, message: 'Error en el servidor.' });
-      }
+  try {
+      // Consulta para encontrar el usuario
+      const query = 'SELECT * FROM Usuario WHERE correo_electronico = ?';
+      const [results] = await connection.promise().query(query, [correo_electronico]);
 
       // Verifica si el usuario existe
       if (results.length === 0) {
-          console.log('No se encontró el usuario con el correo proporcionado.');
           return res.status(401).json({ success: false, message: 'Credenciales incorrectas.' });
       }
 
       const user = results[0];
-      console.log('Usuario encontrado:', user);
 
       // Verificar el estado de la cuenta
       if (user.estado !== 'activo') {
-          console.log('Estado de la cuenta:', user.estado);
           return res.status(403).json({ success: false, message: 'Cuenta inactiva o pendiente.' });
       }
 
       // Verifica la contraseña
-      bcrypt.compare(contrasena, user.contrasena, (err, isMatch) => {
-          if (err) {
-              console.error('Error al comparar contraseñas:', err);
-              return res.status(500).json({ success: false, message: 'Error en el servidor.' });
-          }
+      const isMatch = await bcrypt.compare(contrasena, user.contrasena);
+      if (!isMatch) {
+          return res.status(401).json({ success: false, message: 'Credenciales incorrectas.' });
+      }
 
-          if (!isMatch) {
-              console.log('La contraseña no coincide.');
-              return res.status(401).json({ success: false, message: 'Credenciales incorrectas.' });
-          }
+      // Almacena la información del usuario en la sesión
+      req.session.user = {
+          id_usuario: user.id_usuario,
+          nombres: user.nombres,
+          apellidos: user.apellidos,
+          rol: user.rol
+      };
 
-          // Almacena la información del usuario en la sesión
-          req.session.user = {
+      // Determina la ruta según el rol del usuario
+      let redirectUrl;
+      switch (user.rol.toLowerCase()) {
+          case 'cliente':
+              redirectUrl = '/';
+              break;
+          case 'jefe de produccion':
+              redirectUrl = '/jf_produccion.js';
+              break;
+          case 'domiciliario':
+              redirectUrl = '/domiciliario.js';
+              break;
+          case 'gerente':
+              redirectUrl = '/usuarios_admin.js';
+              break;
+          default:
+              redirectUrl = '/';
+              break;
+      }
+
+      // Devuelve la respuesta con los datos del usuario y la URL de redirección
+      res.json({
+          success: true,
+          message: 'Inicio de sesión exitoso.',
+          user: {
               id_usuario: user.id_usuario,
               nombres: user.nombres,
               apellidos: user.apellidos,
               rol: user.rol
-          };
-
-          // Devuelve la respuesta con los datos del usuario
-          res.json({
-              success: true,
-              message: 'Inicio de sesión exitoso.',
-              user: {
-                  id_usuario: user.id_usuario,
-                  nombres: user.nombres,
-                  apellidos: user.apellidos,
-                  rol: user.rol
-              }
-          });
+          },
+          redirectUrl: redirectUrl
       });
-  });
+  } catch (err) {
+      console.error('Error al procesar la solicitud de inicio de sesión:', err);
+      res.status(500).json({ success: false, message: 'Error en el servidor.' });
+  }
 });
-
-
 
 // Ruta para buscar usuario por correo electrónico
 app.get('/usuarios/correo/:correo_electronico', (req, res) => {

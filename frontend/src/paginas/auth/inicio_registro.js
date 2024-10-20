@@ -254,156 +254,132 @@ const Inicio_registro = () => {
 
     /*inicio de sesion*/
     const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [isAuthenticated, setIsAuthenticated] = useState(
-        sessionStorage.getItem("isAuthenticated") === "true"
-    );
-    const [userName, setUserName] = useState(() => {
-        return sessionStorage.getItem("userName") || "";
-    });
-    const navigate = useNavigate();
+const [password, setPassword] = useState("");
+const [isAuthenticated, setIsAuthenticated] = useState(sessionStorage.getItem("isAuthenticated") === "true");
+const [userName, setUserName] = useState(() => sessionStorage.getItem("userName") || "");
 
-    useEffect(() => {
-        if (isAuthenticated) {
-            const storedUserName = sessionStorage.getItem("userName");
-            if (storedUserName) {
-                setUserName(storedUserName);
+const navigate = useNavigate();
+
+useEffect(() => {
+    if (isAuthenticated) {
+        const storedUserName = sessionStorage.getItem("userName");
+        if (storedUserName) {
+            setUserName(storedUserName);
+        }
+    } else {
+        setUserName("");
+    }
+}, [isAuthenticated]);
+
+const handleLogin = async (e) => {
+    e.preventDefault();
+
+    try {
+        // Realizar una solicitud POST a la API para el inicio de sesión
+        const response = await axios.post("http://localhost:4001/login", {
+            correo_electronico: email,
+            contrasena: password
+        });
+
+        console.log('Correo electrónico enviado:', email);
+        console.log('Contraseña enviada:', password);
+
+        const user = response.data.user; // Obtener datos del usuario de la respuesta
+        console.log('Respuesta del servidor:', response.data);
+
+        if (user) {
+            // Verificar el estado del usuario
+            if (user.estado === "activo") {
+                // Guardar datos del usuario en sessionStorage
+                sessionStorage.setItem("isAuthenticated", "true");
+                sessionStorage.setItem("userRole", user.rol);
+                sessionStorage.setItem("userName", user.nombres);
+                sessionStorage.setItem("userId", user.id_usuario);
+
+                setIsAuthenticated(true);
+                setUserName(user.nombres);
+
+                // Mostrar alerta de inicio de sesión exitoso
+                await Swal.fire({
+                    title: 'Inicio de sesión exitoso',
+                    text: `Bienvenid@, ${user.nombres}!`,
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+
+                // Navegar según el rol del usuario
+                const route = getRouteBasedOnRole(user.rol);
+                navigate(route); // Redirigir directamente
+
+            } else {
+                await handleUserState(user.estado);
             }
         } else {
-            setUserName("");
+            await showErrorAlert('Correo o contraseña incorrectos');
         }
-    }, [isAuthenticated]);
+    } catch (error) {
+        await handleError(error);
+    }
+};
 
-    const handleLogin = async (e) => {
-        e.preventDefault();
-    
-        try {
-            // Realizar una solicitud POST a la API para el inicio de sesión
-            const response = await axios.post("http://localhost:4001/login", {
-                correo_electronico: email,
-                contrasena: password
-            });
-            console.log('Correo electrónico enviado:', email);
-            console.log('Contraseña enviada:', password);
-
-            const user = response.data.user; // Obtener datos del usuario de la respuesta
-            console.log('Respuesta del servidor:', response.data);
-
-    
-            if (user) {
-                // Verificar el estado del usuario
-                if (user.estado === "activo") {
-                    // Guardar datos del usuario en sessionStorage
-                    sessionStorage.setItem("isAuthenticated", "true");
-                    sessionStorage.setItem("userRole", user.rol);
-                    sessionStorage.setItem("userName", user.nombres);
-                    sessionStorage.setItem("userId", user.id_usuario);
-                    setIsAuthenticated(true);
-                    setUserName(user.nombres);
-    
-                    // Mostrar alerta de inicio de sesión exitoso
-                    await Swal.fire({
-                        title: 'Inicio de sesión exitoso',
-                        text: `Bienvenid@, ${user.nombres}!`,
-                        icon: 'success',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
-    
-                  // Navegar según el rol del usuario
-const route = user.rol.toLowerCase() === "cliente" ? "/" :
-user.rol.toLowerCase() === "jefe de produccion" ? "/jf_produccion.js" :
-user.rol.toLowerCase() === "domiciliario" ? "/domiciliario.js" :
-user.rol.toLowerCase() === "gerente" ? "/usuarios_admin.js" : "/";
-
-navigate(route);
-
-                } else if (user.estado === "Pendiente") {
-                    // Mostrar alerta si el usuario está pendiente
-                    await Swal.fire({
-                        title: 'Cuenta Pendiente',
-                        text: 'Tu cuenta está pendiente de verificación. Por favor, revisa tu correo electrónico para completar la verificación.',
-                        icon: 'info',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
-                } else if (user.estado === "Inactivo") {
-                    // Mostrar alerta si el usuario está inactivo
-                    await Swal.fire({
-                        title: 'Cuenta Inactiva',
-                        text: 'Tu cuenta está inactiva. Por favor, contacta a soporte.',
-                        icon: 'warning',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
-                }
-            } else {
-                // Mostrar alerta si el usuario no es encontrado
-                await Swal.fire({
-                    title: 'Error',
-                    text: 'Correo o contraseña incorrectos',
-                    icon: 'error',
-                    timer: 2000,
-                    showConfirmButton: false
-                });
-            }
-        } catch (error) {
-            // Manejo de errores
-            if (error.response) {
-                // La solicitud fue realizada y el servidor respondió con un código de estado que no está en el rango de 2xx
-                console.error("Error en la respuesta del servidor:", error.response.data);
-                console.error("Código de estado:", error.response.status);
-                
-                // Mostrar alerta personalizada según el código de error
-                if (error.response.status === 403) {
-                    await Swal.fire({
-                        title: 'Acceso Prohibido',
-                        text: 'No tienes permiso para acceder a esta acción. Por favor, verifica tus credenciales.',
-                        icon: 'error',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
-                } else if (error.response.status === 401) {
-                    await Swal.fire({
-                        title: 'Error',
-                        text: 'Credenciales incorrectas. Por favor, intenta nuevamente.',
-                        icon: 'error',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
-                } else {
-                    await Swal.fire({
-                        title: 'Error',
-                        text: 'Ocurrió un error durante el inicio de sesión. Por favor, intente nuevamente.',
-                        icon: 'error',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
-                }
-            } else if (error.request) {
-                // La solicitud fue realizada pero no se recibió respuesta
-                console.error("Error en la solicitud:", error.request);
-                await Swal.fire({
-                    title: 'Error',
-                    text: 'No se recibió respuesta del servidor. Por favor, verifica tu conexión.',
-                    icon: 'error',
-                    timer: 2000,
-                    showConfirmButton: false
-                });
-            } else {
-                // Algo sucedió al configurar la solicitud que lanzó un error
-                console.error("Error:", error.message);
-                await Swal.fire({
-                    title: 'Error',
-                    text: 'Ocurrió un error al intentar iniciar sesión. Por favor, intenta nuevamente.',
-                    icon: 'error',
-                    timer: 2000,
-                    showConfirmButton: false
-                });
-            }
+    // Función para obtener la ruta basada en el rol del usuario
+    const getRouteBasedOnRole = (role) => {
+        switch (role.toLowerCase()) {
+            case "cliente":
+                return "/";
+            case "jefe de produccion":
+                return "/jf_produccion.js";
+            case "domiciliario":
+                return "/domiciliario.js";
+            case "gerente":
+                return "/usuarios_admin.js";
+            default:
+                return "/";
         }
     };
-    
+
+    // Función para manejar el estado del usuario
+    const handleUserState = async (estado) => {
+        if (estado === "Pendiente") {
+            await showErrorAlert('Tu cuenta está pendiente de verificación. Por favor, revisa tu correo electrónico para completar la verificación.');
+        } else if (estado === "inactivo") {
+            await showErrorAlert('Tu cuenta está inactiva. Por favor, contacta a soporte.');
+        }
+    };
+
+    // Función para mostrar alertas de error
+    const showErrorAlert = async (message) => {
+        await Swal.fire({
+            title: 'Error',
+            text: message,
+            icon: 'error',
+            timer: 2000,
+            showConfirmButton: false
+        });
+    };
+
+    // Manejo de errores
+    const handleError = async (error) => {
+        if (error.response) {
+            console.error("Error en la respuesta del servidor:", error.response.data);
+            console.error("Código de estado:", error.response.status);
+            
+            if (error.response.status === 403) {
+                await showErrorAlert('No tienes permiso para acceder a esta acción. Por favor, verifica tus credenciales.');
+            } else if (error.response.status === 401) {
+                await showErrorAlert('Credenciales incorrectas. Por favor, intenta nuevamente.');
+            } else {
+                await showErrorAlert('Ocurrió un error durante el inicio de sesión. Por favor, intente nuevamente.');
+            }
+        } else if (error.request) {
+            console.error("Error en la solicitud:", error.request);
+            await showErrorAlert('No se recibió respuesta del servidor. Por favor, verifica tu conexión.');
+        } else {
+            console.error("Error:", error.message);
+            await showErrorAlert('Ocurrió un error al intentar iniciar sesión. Por favor, intenta nuevamente.');
+        }
+    };
     
      // Maneja el cambio en el tipo de documento
      const handleTipoDocChange = (event) => {
@@ -579,6 +555,7 @@ navigate(route);
                                 <button type="submit">Ingresar</button>
                             </div>
                         </form>
+                        {isAuthenticated && <p>Bienvenido, {userName}!</p>}
 
                         {/*Register*/}
                         <form onSubmit={handleRegisterSubmit} className="formulario__register" style={{padding: '10px 20px'}}>
